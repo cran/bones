@@ -1,0 +1,387 @@
+#' Wrap a Shiny output in a skeleton placeholder
+#'
+#' Shows a grey placeholder in the shape of the content while the output
+#' loads for the first time. When the output calculates again, the old
+#' content stays on the screen and is dimmed. The user is possibly reading
+#' that content, and grey boxes in its place would remove information and
+#' add none.
+#'
+#' # Shape
+#'
+#' The shape comes from the output that you give: `plotOutput()` gets the
+#' shape of a chart, `tableOutput()` gets rows and columns, and
+#' `textOutput()` gets lines of text. Use `type` to set a different shape.
+#' You must do this for `uiOutput()`, because its content is not known
+#' before it arrives.
+#'
+#' A `plotOutput()` gets the shape of a bar chart. If the chart is of
+#' another kind, give that kind: `"line"`, `"scatter"`, `"area"`,
+#' `"histogram"`, `"pie"` or `"heatmap"`. The output cannot tell, because
+#' `renderPlot()` decides the kind later, on the server.
+#'
+#' A table from a table package gets the shape of that package, found from
+#' its output: `DT::DTOutput()` gets `"dt"`, `reactable::reactableOutput()`
+#' gets `"reactable"`, `gt::gt_output()` gets `"gt"`, and
+#' `rhandsontable::rHandsontableOutput()` gets `"rhandsontable"`. Each shape
+#' copies the parts of its package, such as the search box of DT. Set `rows`
+#' to the number of rows on a page: DT and reactable show 10 by default.
+#' Before gt 1.0.0, `gt_output()` did not mark its output as a gt table, so
+#' with an older gt, give `type = "gt"`.
+#'
+#' A visualisation widget gets the shape of its kind, found from its output
+#' in the same way. A map (leaflet, tmap, mapview, mapdeck and others) gets
+#' `"map"`. A network or a diagram (visNetwork, DiagrammeR, networkD3,
+#' collapsibleTree) gets `"network"`. timevis gets `"timeline"`, wordcloud2
+#' gets `"wordcloud"`, and dygraphs gets `"line"`. ggmap and a ggplot2 map
+#' draw into a `plotOutput()`, so give them `type = "map"`.
+#'
+#' A plotly, echarts4r or highcharter output can draw any kind of chart. With
+#' no `type`, it finds its kind by itself, but only when its first value
+#' arrives in the browser: the spec of the chart names the kind of each
+#' series. The first skeleton thus has the bar shape. The next loads, with
+#' `stale = FALSE`, show the shape of the kind: `"bar"`, `"line"`, `"area"`,
+#' `"scatter"`, `"histogram"`, `"pie"`, `"heatmap"`, `"map"`, `"network"` or
+#' `"wordcloud"`. With `remember`, the kind is also stored in the browser, so
+#' on the next visit the first skeleton has that shape too. The first series
+#' that names a kind decides. A chart of a kind with no shape, such as a box
+#' plot, keeps the bar shape. A `type` that you give always wins. Other
+#' widgets that can draw any chart, such as ggiraph, keep the bar shape: give
+#' their kind with `type`.
+#'
+#' # Your own placeholder
+#'
+#' When no built-in shape fits, give your own with `skeleton`. Build it from
+#' [bones_block()], a grey block that takes the colours and the animation of
+#' bones, and lay the blocks out with any tags. The tags at the top level
+#' stack with a small gap. The placeholder behaves as a built-in shape does: it
+#' waits for `delay`, it stays for `min_time`, it keeps the space of the
+#' content, and the old content stays when `stale` is `TRUE`.
+#'
+#' # Layout
+#'
+#' The wrapper keeps the space of the output until the content arrives, so
+#' the page does not move. If the output sets its own height, as
+#' `plotOutput()` does, the wrapper uses that height. If not, the height
+#' comes from `rows`, `lines` or `n`, or you can set it with `height`. When
+#' the content arrives, the content sets the height.
+#'
+#' @param ui A Shiny output, such as `plotOutput("chart")`.
+#' @param type The shape of the skeleton: `"text"`, `"table"`, `"plot"`,
+#'   `"cards"`, `"value"`, a chart shape (`"bar"`, `"line"`, `"scatter"`,
+#'   `"area"`, `"histogram"`, `"pie"`, `"heatmap"`, `"map"`, `"network"`,
+#'   `"timeline"`, `"wordcloud"`), or a table package shape (`"dt"`,
+#'   `"reactable"`, `"gt"`, `"rhandsontable"`). `NULL` (the default) gets the
+#'   shape from `ui`.
+#' @param rows,cols The number of body rows and columns, when `type` is
+#'   `"table"` or a table package shape.
+#' @param lines The number of lines, when `type` is `"text"`.
+#' @param n The number of cards or values, when `type` is `"cards"` or
+#'   `"value"`.
+#' @param height A CSS height for the placeholder, or a number of pixels, as
+#'   in Shiny. `NULL` uses the height of the output. If the output has no
+#'   height, `NULL` uses a default for the type.
+#' @param animation `"wave"`, `"pulse"`, `"cascade"`, `"sweep"` or
+#'   `"none"`. See [bones_defaults()] for what each one does. `NULL` uses the
+#'   value from [bones_defaults()].
+#' @param stale `TRUE` keeps the old content on the screen, dimmed, while
+#'   the output calculates again. `FALSE` shows the skeleton again. `NULL`
+#'   uses the value from [bones_defaults()], which is `TRUE` if you did not
+#'   set it.
+#' @param delay The time in milliseconds before the skeleton, or the
+#'   dimming, appears. A load that ends sooner shows nothing, so a fast
+#'   output does not flicker. The space of the content is kept from the
+#'   start. `NULL` uses the value from [bones_defaults()], which is 300 if
+#'   you did not set it.
+#' @param min_time The shortest time in milliseconds that the skeleton, or
+#'   the dimming, stays on the screen once it has appeared. A load that ends
+#'   a moment after `delay` thus does not flash a skeleton for one frame.
+#'   `NULL` uses the value from [bones_defaults()], which is 500 if you did
+#'   not set it.
+#' @param remember `TRUE` stores the real height of the content in the
+#'   browser, and keeps that height on the next visit in place of the
+#'   estimate, so the page does not move when the content arrives. Only a
+#'   height from an estimate is stored: a height from `height`, or from the
+#'   output itself, is exact already. The height is kept per page and per
+#'   output id, and it is used only when the output has almost the same
+#'   width as when it was measured. For a plotly, echarts4r or highcharter
+#'   output, `remember` also stores the kind of the chart (see "Shape").
+#'   `NULL` uses the value from [bones_defaults()], which is `TRUE` if you
+#'   did not set it.
+#' @param skeleton Your own placeholder, in place of a built-in shape: a tag
+#'   or a tag list, made of [bones_block()] blocks and any layout around
+#'   them. See "Your own placeholder". Give `type` or `skeleton`, not both.
+#'
+#' @return `ui`, in a placeholder container.
+#'
+#' @examples
+#' if (requireNamespace("shiny", quietly = TRUE)) {
+#'   library(shiny)
+#'
+#'   withBones(plotOutput("chart"))
+#'   withBones(tableOutput("results"), rows = 8, cols = 5)
+#'   withBones(uiOutput("cards"), type = "cards", n = 4)
+#'   withBones(plotOutput("trend"), type = "line")
+#'
+#'   # Your own placeholder: an avatar and two lines of text.
+#'   withBones(
+#'     uiOutput("profile"),
+#'     skeleton = div(
+#'       style = "display: flex; gap: 1rem; align-items: center;",
+#'       bones_block("3rem", "3rem", shape = "circle"),
+#'       div(
+#'         style = "flex: 1; display: grid; gap: 0.5rem;",
+#'         bones_block("60%"), bones_block("40%")
+#'       )
+#'     )
+#'   )
+#' }
+#' @export
+# The name is camelCase, not snake_case, on purpose. It follows the wrappers
+# of Shiny, such as withProgress() and withMathJax().
+withBones <- function(ui, # nolint: object_name_linter.
+                      type = NULL,
+                      rows = 6L,
+                      cols = 4L,
+                      lines = 3L,
+                      n = 3L,
+                      height = NULL,
+                      animation = NULL,
+                      stale = NULL,
+                      delay = NULL,
+                      min_time = NULL,
+                      remember = NULL,
+                      skeleton = NULL) {
+
+  # --- Validate inputs ---
+  if (is.null(ui)) stop("`ui` must be a Shiny output, not NULL.", call. = FALSE)
+  check_count(rows, "rows")
+  check_count(cols, "cols")
+  check_count(lines, "lines")
+  check_count(n, "n")
+  height <- as_css_length(height, "height")
+  if (!is.null(skeleton)) {
+    if (!is.null(type)) {
+      stop("Give `type` or `skeleton`, not both.", call. = FALSE)
+    }
+    if (!inherits(skeleton, c("shiny.tag", "shiny.tag.list", "html")) && !is.list(skeleton)) {
+      stop("`skeleton` must be a tag or a tag list, such as `bones_block()`.", call. = FALSE)
+    }
+  }
+
+  # A type that you give always wins. Only an inferred shape of a plotly,
+  # echarts4r or highcharter output is replaced by the kind that bones.js
+  # reads from the value.
+  detect <- NA_character_
+  if (is.null(type)) {
+    type <- infer_type(ui)
+    # Your own placeholder wins too: its shape must not change.
+    if (is.null(skeleton)) detect <- detect_widget(ui)
+  } else {
+    type <- match.arg(type, skeleton_types())
+  }
+
+  animation <- animation %||% getOption("bones.animation", "wave")
+  animation <- match.arg(animation, animation_types())
+  stale <- stale %||% getOption("bones.stale", TRUE)
+  check_flag(stale, "stale")
+  delay <- delay %||% getOption("bones.delay", 300)
+  check_ms(delay, "delay")
+  min_time <- min_time %||% getOption("bones.min_time", 500)
+  check_ms(min_time, "min_time")
+  remember <- remember %||% getOption("bones.remember", TRUE)
+  check_flag(remember, "remember")
+
+  # --- Height to keep until the content arrives ---
+  # Only an estimated height can be improved by the real one, so only an
+  # estimate is marked for bones.js to remember.
+  estimated <- FALSE
+  if (is.null(height)) {
+    height <- find_inline_height(ui)
+    if (is.na(height)) {
+      height <- default_height(type, rows = rows, lines = lines, n = n)
+      estimated <- TRUE
+    }
+  }
+
+  # No height here. Inside the wrapper, the skeleton fills the wrapper. The
+  # height of the output, or the default for the shape of the output, still
+  # sets the space, also for your own placeholder.
+  custom <- !is.null(skeleton)
+  skeleton <- if (custom) {
+    custom_skeleton_tag(skeleton)
+  } else {
+    skeleton_tag(type = type, rows = rows, cols = cols, lines = lines, n = n)
+  }
+
+  # In a fillable layout of bslib, such as a card, an output that is a fill
+  # item grows to fill its container, and each tag between them must pass
+  # the fill on. The wrapper and the content div are between them, so they
+  # become fill containers and fill items too. Other outputs keep their own
+  # height, and their wrapper stays a plain block.
+  fill <- is_fill_item(ui)
+  fill_role <- function(tag) {
+    if (fill) htmltools::bindFillRole(tag, container = TRUE, item = TRUE) else tag
+  }
+
+  # The content has its box from the start, but it is hidden. With
+  # `display: none`, Shiny would read a width of zero, and plotOutput()
+  # would make its image at the wrong size. That image then stays until
+  # something causes a new render.
+  content <- fill_role(htmltools::tags$div(class = "bones-content", ui))
+
+  wrap <- fill_role(htmltools::tags$div(
+    class = paste0("bones-wrap bones-anim-", animation),
+    `data-bones-type` = if (custom) "custom" else type,
+    `data-bones-stale` = if (isTRUE(stale)) "true" else "false",
+    `data-bones-min-time` = format(min_time, scientific = FALSE),
+    # Read by bones.js: store the real height, and use it next time.
+    `data-bones-remember` = if (estimated && isTRUE(remember)) "true",
+    # Read by bones.js: find the chart kind from the value, and with
+    # remember, store it for the next visit.
+    `data-bones-detect` = na_to_null(detect),
+    `data-bones-remember-kind` = if (!is.na(detect) && isTRUE(remember)) "true",
+    # htmltools writes an NA attribute as an attribute with no value. Give
+    # NULL instead, so that no `data-bones-id` attribute is written.
+    `data-bones-id` = na_to_null(find_output_id(ui)),
+    # A custom property, not a min-height. bones.css applies it only
+    # until the content arrives. A min-height that stayed would leave a
+    # gap under content that is shorter than the estimate.
+    style = paste(c(
+      sprintf("--bones-reserve: %s;", height),
+      sprintf("--bones-delay: %sms;", format(delay, scientific = FALSE)),
+      css_vars()
+    ), collapse = " "),
+    skeleton,
+    if (!is.na(detect)) kind_templates(),
+    content
+  ))
+
+  htmltools::attachDependencies(wrap, bones_dependency(), append = TRUE)
+}
+
+
+#' Is the output a fill item, which grows in a fillable layout?
+#'
+#' @param ui A UI element.
+#' @return `TRUE` or `FALSE`.
+#' @keywords internal
+#' @noRd
+is_fill_item <- function(ui) {
+  classes <- unlist(strsplit(collect_classes(ui), "\\s+"), use.names = FALSE)
+  "html-fill-item" %in% classes
+}
+
+
+#' Set the placeholder defaults for the session
+#'
+#' Sets the defaults that [withBones()] uses for the rest of the session.
+#' An argument that is `NULL` does not change its default. An argument that
+#' you give to [withBones()] is stronger than a default from here.
+#'
+#' @param animation How the placeholder moves:
+#'   * `"wave"`: a band of light moves along each bar.
+#'   * `"pulse"`: the whole placeholder fades out and in.
+#'   * `"cascade"`: each bar, cell or line lights up a little after the one
+#'     before, so a ripple runs through the shape.
+#'   * `"sweep"`: one band of light crosses the whole placeholder, over
+#'     every mark at once, the lines and dots of a chart too.
+#'   * `"none"`: no movement.
+#'
+#'   Users who ask their system to reduce motion always get `"none"`.
+#' @param color The colour of the placeholder, as a CSS colour. By default
+#'   it comes from the theme of the page: the text colour of the bslib
+#'   theme, made faint. A colour given here is stronger than the theme.
+#' @param highlight The colour of the band of light in the `"wave"`
+#'   animation, and of the header row of a table. By default it comes from
+#'   the theme, as `color` does.
+#' @param radius The CSS corner radius of the placeholder bars. By default
+#'   it follows the rounding of the theme.
+#' @param speed The time of one animation cycle, in seconds.
+#' @param stale The default for the `stale` argument of [withBones()].
+#' @param delay,min_time The defaults for the `delay` and `min_time`
+#'   arguments of [withBones()], in milliseconds.
+#' @param remember The default for the `remember` argument of
+#'   [withBones()].
+#'
+#' @return The old values, invisibly, in the form that [options()] uses.
+#'   Give them to `options()` to restore them. Do not give them to
+#'   `bones_defaults()`: `NULL` there means "do not change", so an option
+#'   that had no value before would keep the new value.
+#'
+#' @examples
+#' old <- bones_defaults(animation = "pulse", radius = "0.5rem")
+#' bones_skeleton("text")
+#'
+#' options(old)
+#' @export
+bones_defaults <- function(animation = NULL,
+                           color = NULL,
+                           highlight = NULL,
+                           radius = NULL,
+                           speed = NULL,
+                           stale = NULL,
+                           delay = NULL,
+                           min_time = NULL,
+                           remember = NULL) {
+
+  # --- Validate inputs ---
+  if (!is.null(animation)) {
+    animation <- match.arg(animation, animation_types())
+  }
+  if (!is.null(speed) &&
+        (!is.numeric(speed) || length(speed) != 1L || is.na(speed) || speed <= 0)) {
+    stop("`speed` must be a single positive number of seconds.", call. = FALSE)
+  }
+  if (!is.null(stale)) check_flag(stale, "stale")
+  if (!is.null(delay)) check_ms(delay, "delay")
+  if (!is.null(min_time)) check_ms(min_time, "min_time")
+  if (!is.null(remember)) check_flag(remember, "remember")
+
+  # These values go into an inline style attribute. A value with a ";"
+  # would end the declaration and start another one.
+  css_values <- list(color = color, highlight = highlight, radius = radius)
+  for (name in names(css_values)) {
+    value <- css_values[[name]]
+    if (is.null(value)) next
+    if (!is.character(value) || length(value) != 1L || is.na(value) ||
+          !nzchar(value) || grepl("[;{}]", value)) {
+      stop(sprintf("`%s` must be a single CSS value, with no \";\", \"{\" or \"}\".", name),
+           call. = FALSE)
+    }
+  }
+
+  # --- Set only the options that were given ---
+  new <- list(
+    bones.animation = animation,
+    bones.color     = color,
+    bones.highlight = highlight,
+    bones.radius    = radius,
+    bones.speed     = speed,
+    bones.stale     = stale,
+    bones.delay     = delay,
+    bones.min_time  = min_time,
+    bones.remember  = remember
+  )
+  new <- new[!vapply(new, is.null, logical(1))]
+
+  invisible(options(new))
+}
+
+
+#' Make the colour and shape options into inline CSS custom properties
+#' @keywords internal
+#' @noRd
+css_vars <- function() {
+  pairs <- list(
+    `--bones-color`     = getOption("bones.color"),
+    `--bones-highlight` = getOption("bones.highlight"),
+    `--bones-radius`    = getOption("bones.radius"),
+    `--bones-speed`     = {
+      s <- getOption("bones.speed")
+      if (is.null(s)) NULL else sprintf("%ss", s)
+    }
+  )
+  pairs <- pairs[!vapply(pairs, is.null, logical(1))]
+  if (length(pairs) == 0L) return(character(0))
+  sprintf("%s: %s;", names(pairs), unlist(pairs, use.names = FALSE))
+}
