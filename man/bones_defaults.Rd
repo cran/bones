@@ -13,7 +13,9 @@ bones_defaults(
   stale = NULL,
   delay = NULL,
   min_time = NULL,
-  remember = NULL
+  remember = NULL,
+  error = NULL,
+  learn = NULL
 )
 }
 \arguments{
@@ -32,7 +34,9 @@ Users who ask their system to reduce motion always get \code{"none"}.}
 
 \item{color}{The colour of the placeholder, as a CSS colour. By default
 it comes from the theme of the page: the text colour of the bslib
-theme, made faint. A colour given here is stronger than the theme.}
+theme, made faint. A colour given here is stronger than the theme, and
+than the CSS custom property \code{--bones-color} set by the app. The
+"Get started" article lists the custom properties for theming in CSS.}
 
 \item{highlight}{The colour of the band of light in the \code{"wave"}
 animation, and of the header row of a table. By default it comes from
@@ -50,9 +54,17 @@ arguments of \code{\link[=withBones]{withBones()}}, in milliseconds.}
 
 \item{remember}{The default for the \code{remember} argument of
 \code{\link[=withBones]{withBones()}}.}
+
+\item{error}{The default for the \code{error} argument of \code{\link[=withBones]{withBones()}}.
+\code{NULL} leaves the option unchanged. Use \code{FALSE} for the error text of Shiny.}
+
+\item{learn}{The default for the \code{learn} argument of \code{\link[=withBones]{withBones()}}.}
 }
 \value{
-The old values, invisibly, in the form that \code{\link[=options]{options()}} uses.
+With no arguments, a named list of current values. Unset options
+use the built-in defaults. \code{NULL} for \code{color}, \code{highlight} and \code{radius}
+means that the stylesheet uses the page theme.
+With arguments, the old values, invisibly, in the form that \code{\link[=options]{options()}} uses.
 Give them to \code{options()} to restore them. Do not give them to
 \code{bones_defaults()}: \code{NULL} there means "do not change", so an option
 that had no value before would keep the new value.
@@ -61,6 +73,8 @@ that had no value before would keep the new value.
 Sets the defaults that \code{\link[=withBones]{withBones()}} uses for the rest of the session.
 An argument that is \code{NULL} does not change its default. An argument that
 you give to \code{\link[=withBones]{withBones()}} is stronger than a default from here.
+Call it before you build the UI, for example in \code{global.R}.
+The options are read when the UI is built.
 }
 \examples{
 old <- bones_defaults(animation = "pulse", radius = "0.5rem")

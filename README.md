@@ -1,6 +1,8 @@
 # bones <img src="man/figures/logo.png" align="right" height="139" alt="bones logo" />
 
 <!-- badges: start -->
+[![CRAN status](https://www.r-pkg.org/badges/version/bones)](https://CRAN.R-project.org/package=bones)
+[![CRAN downloads](https://cranlogs.r-pkg.org/badges/grand-total/bones)](https://CRAN.R-project.org/package=bones)
 [![R-CMD-check](https://github.com/tenmeh/bones/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/tenmeh/bones/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
@@ -31,6 +33,12 @@ ui <- bones_auto(fluidPage(
 ```
 
 ## Installation
+
+```r
+install.packages("bones")
+```
+
+To get the development version from GitHub:
 
 ```r
 # install.packages("remotes")
@@ -251,6 +259,26 @@ The tags at the top level stack with a small gap. The placeholder behaves
 as a built-in shape does: it waits for `delay`, keeps the space of the
 content, and leaves the old content on the screen when `stale` is `TRUE`.
 
+## Learned shapes
+
+On the first visit, the shape comes from the type of the output. After
+that, each output learns the shape of its content. When the content
+arrives, the browser stores the place and the size of each line of text,
+each image and each card. On the next visit, the skeleton has that shape:
+a table with a title and 12 rows gets a title and 12 rows of bars.
+
+- It applies only when you do not set the shape yourself: no `type`,
+  `rows`, `cols`, `lines`, `n` or `skeleton`. It does not apply to charts,
+  which keep their chart shapes.
+- A stored shape is used only when the output is within 10% of the width
+  at which it was stored. On a narrower screen, the built-in shape comes
+  back.
+- Only numbers are stored, in the browser of the user. No text from the
+  app is stored.
+- It needs `remember`. Turn it off for one output with
+  `withBones(x, learn = FALSE)`, or for the whole app with
+  `bones_defaults(learn = FALSE)`.
+
 ## Placeholders on their own
 
 When you need a placeholder where there is no Shiny output:
@@ -262,6 +290,20 @@ bones_skeleton("text", lines = 4)
 
 The placeholder brings its stylesheet, and it uses the animation and the
 colours from `bones_defaults()`.
+
+## Error states
+
+`withBones()` shows a calm panel when an output fails on its first load.
+After a good load, it keeps the old content dimmed with a banner.
+Silent `req()` errors and `validate()` messages keep their usual behaviour.
+Error panels are on by default. Use `bones_defaults(error = FALSE)` to
+keep the error text of Shiny.
+
+Give `error = bones_error("The chart could not be loaded.")` to set
+the message, or supply your own tag or tag list. `bones_error(detail = TRUE)`
+shows error detail for development. Leave it off for end users: raw errors
+can contain file paths, SQL, or private data when `shiny.sanitize.errors = FALSE`.
+Messages from `safeError()` still show when detail is off.
 
 ## Accessibility
 
@@ -281,9 +323,17 @@ devtools::test()
 devtools::check()
 ```
 
-The browser tests in `tests/testthat/test-app-smoke.R` need a headless
-Chrome. They skip on CRAN, and when no browser can start. Set
-`NOT_CRAN=true` to run them.
+The browser tests (`tests/testthat/test-app-*.R` and
+`test-error-payload.R`) need a headless Chrome. They skip on CRAN, and when
+no browser can start. Set `NOT_CRAN=true` to run them. Set
+`BONES_BROWSER_TESTS=false` to skip them. The R CMD check jobs in CI do
+this, and a separate job runs the browser tests.
+
+## Support
+
+`bones` is free and open source, and I work on it in my own time. If it
+helps you or your team, you can
+[sponsor my work on GitHub](https://github.com/sponsors/tenmeh).
 
 ## License
 

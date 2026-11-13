@@ -359,12 +359,26 @@ test_that("a fast load shows nothing, and a skeleton stays at least min_time", {
     lapply(log, function(v) if (is.null(v)) NA_real_ else v - log$click)
   }
 
+  # The load takes 50ms on the server, but the round trip from the click to
+  # the value can take longer than the delay of 300ms on a busy CI machine.
+  # A skeleton is then right. So the test checks the rule itself: a load
+  # that is back before the delay shows nothing, and a skeleton or a dim
+  # never starts before the delay.
+  no_early <- function(log, field, what) {
+    expect_false(is.na(log$loaded))
+    if (log$loaded < 250) {
+      expect_true(is.na(log[[field]]),
+                  info = sprintf("a load back in %.0fms must not %s", log$loaded, what))
+    } else if (!is.na(log[[field]])) {
+      expect_gte(log[[field]], 250)   # the delay is 300ms, less a small margin
+    }
+  }
+
   fast <- timing("fast")
-  expect_true(is.na(fast$shown), info = "a 50ms load must not show a skeleton")
-  expect_false(is.na(fast$loaded))
+  no_early(fast, "shown", "show a skeleton")
 
   faststale <- timing("faststale")
-  expect_true(is.na(faststale$dimmed), info = "a 50ms load must not dim the content")
+  no_early(faststale, "dimmed", "dim the content")
 
   slow <- timing("slow")
   expect_false(is.na(slow$shown), info = "a slow load shows its skeleton")
@@ -813,4 +827,153 @@ test_that("the faults of the second review stay fixed", {
   expect_equal(nested, "none")
 
   expect_no_shiny_errors(app)
+})
+test_that("sweep keeps a first load error state", {
+  skip_on_cran()
+  app <- local_app_driver(test_path("apps", "errors"), name = "error-sweep")
+  app$wait_for_js(
+    "document.querySelector('[data-bones-id=first_error]').classList.contains('bones-errored')"
+  )
+  app$click("idle")
+  app$wait_for_idle()
+  expect_equal(app$get_value(output = "idle_value"), "1")
+  Sys.sleep(0.1)
+  expect_true(app$get_js(
+    "document.querySelector('[data-bones-id=first_error]').classList.contains('bones-errored')"
+  ))
+  expect_false(app$get_js(
+    "document.querySelector('[data-bones-id=first_error]').classList.contains('bones-has-loaded')"
+  ))
+  expect_equal(app$get_js(
+    "getComputedStyle(document.querySelector('[data-bones-id=first_error] .bones-error')).display"
+  ), "flex")
+})
+
+test_that("error panels preserve validation and old content", {
+  skip_on_cran()
+  app <- local_app_driver(test_path("apps", "errors"), name = "error-states")
+  wait_for_settled(app, ids = c("silent", "validation", "later_error", "no_stale", "disabled"))
+  expect_equal(wrapper_states(app, c("silent", "validation")),
+               c(silent = "loaded", validation = "loaded"))
+  read_output <- function(id) {
+    app$get_js(sprintf("(function () {
+      var w = document.querySelector('[data-bones-id=%s]');
+      var c = w.querySelector('.bones-content');
+      var p = w.querySelector('.bones-error');
+      var box = w.getBoundingClientRect();
+      var banner = p && p.getBoundingClientRect();
+      var content = c.getBoundingClientRect();
+      var row = c.firstElementChild.getBoundingClientRect();
+      return {
+        text: c.textContent.trim(), visibility: getComputedStyle(c).visibility,
+        opacity: getComputedStyle(c).opacity,
+        error: w.classList.contains('bones-errored'),
+        panel: p ? getComputedStyle(p).display : null,
+        bannerBottom: banner ? banner.bottom : null,
+        panelAlign: p ? getComputedStyle(p).alignItems : null,
+        panelTextAlign: p ? getComputedStyle(p).textAlign : null,
+        contentTop: content.top,
+        rowTop: row.top, rowBottom: row.bottom,
+        wrapperTop: box.top, wrapperBottom: box.bottom,
+        wrapperHeight: box.height,
+        skeleton: getComputedStyle(w.querySelector('.bones-skeleton')).display
+      };
+    })()", id))
+  }
+  silent <- read_output("silent")
+  expect_equal(silent$text, "")
+  expect_equal(silent$panel, "none")
+  validation <- read_output("validation")
+  expect_equal(validation$text, "pick one")
+  expect_equal(validation$visibility, "visible")
+  expect_equal(validation$panel, "none")
+  first <- read_output("first_error")
+  expect_true(first$error)
+  expect_equal(first$panel, "flex")
+  expect_equal(first$visibility, "hidden")
+  expect_equal(first$skeleton, "none")
+  expect_equal(first$panelAlign, "center")
+  expect_equal(first$panelTextAlign, "center")
+  expect_equal(app$get_js(
+    "document.querySelector('[data-bones-id=detail] .bones-error-detail').textContent"
+  ), "<boom>")
+  expect_null(app$get_js(
+    "document.querySelector('[data-bones-id=detail] .bones-error-detail boom')"
+  ))
+  disabled <- read_output("disabled")
+  expect_equal(disabled$text, "boom")
+  expect_equal(disabled$visibility, "visible")
+  expect_false(disabled$error)
+  expect_null(disabled$panel)
+
+  original_height <- read_output("later_error")$wrapperHeight
+  app$click("fail")
+  for (id in c("later_error", "no_stale")) {
+    later <- read_output(id)
+    expect_true(later$error)
+    expect_match(later$text, "Old content", fixed = TRUE)
+    expect_equal(later$visibility, "visible")
+    expect_equal(later$opacity, "0.45")
+    expect_equal(later$panel, "flex")
+    expect_lte(later$bannerBottom, later$contentTop)
+    expect_gte(later$rowTop, later$wrapperTop)
+    expect_lte(later$rowBottom, later$wrapperBottom)
+    expect_gte(later$rowTop, later$bannerBottom)
+    expect_equal(later$panelTextAlign, "left")
+    expect_false(app$get_js(sprintf("document.getElementById('%s').classList.contains('shiny-output-error')", id)))
+  }
+  app$click("recover")
+  wait_for_settled(app, ids = c("later_error", "no_stale"))
+  expect_false(read_output("later_error")$error)
+  expect_equal(read_output("later_error")$opacity, "1")
+  expect_equal(read_output("later_error")$wrapperHeight, original_height)
+  logs <- as.data.frame(app$get_logs())
+  expect_length(logs$message[logs$location == "chromote" &
+                               !is.na(logs$level) & logs$level == "error"], 0L)
+})
+
+test_that("safe error messages show without raw error detail", {
+  skip_on_cran()
+  app <- local_app_driver(test_path("apps", "errors"), name = "safe-error")
+  app$wait_for_js(
+    "document.querySelector('[data-bones-id=safe_error]').classList.contains('bones-errored')"
+  )
+  expect_equal(app$get_js(
+    "document.querySelector('[data-bones-id=safe_error] .bones-error-safe').textContent"
+  ), "safe boom")
+  expect_equal(app$get_js(
+    "getComputedStyle(document.querySelector('[data-bones-id=safe_error] .bones-error')).display"
+  ), "flex")
+  expect_null(app$get_js(
+    "document.querySelector('[data-bones-id=safe_error] .bones-error-detail')"
+  ))
+  expect_equal(app$get_js(
+    "document.querySelector('[data-bones-id=first_error] .bones-error-safe').textContent"
+  ), "")
+})
+
+test_that("an app driver stays usable when it could not read its worker id", {
+  testthat::skip_on_cran()
+
+  app <- local_app_driver(
+    test_path("apps", "learn"),
+    name         = "bones-worker-id",
+    wait         = FALSE,
+    load_timeout = 45000L,
+    timeout      = 15000L
+  )
+  private <- app$.__enclos_env__$private
+
+  # The state that the read leaves when it fails: every log entry stops.
+  private$shiny_worker_id <- NULL
+  expect_error(app$log_message("no worker id"), "differing number of rows")
+
+  repair_worker_id(app)
+  expect_identical(private$shiny_worker_id, NA_character_)
+  expect_no_error(app$log_message("worker id repaired"))
+
+  # A real id is left alone.
+  private$shiny_worker_id <- "worker-1"
+  repair_worker_id(app)
+  expect_identical(private$shiny_worker_id, "worker-1")
 })

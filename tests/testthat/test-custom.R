@@ -15,7 +15,7 @@ test_that("bones_block() refuses a bad size or shape", {
   expect_error(bones_block(NULL), "`width` must be a CSS width", fixed = TRUE)
   expect_error(bones_block(height = NULL), "`height` must be a CSS height", fixed = TRUE)
   expect_error(bones_block(c("1px", "2px")), "`width` must be a single CSS length", fixed = TRUE)
-  expect_error(bones_block(shape = "star"), "should be one of")
+  expect_error(bones_block(shape = "star"), "`shape` must be one of", fixed = TRUE)
 })
 
 test_that("withBones() puts your own placeholder in place of the built-in shape", {
@@ -34,16 +34,25 @@ test_that("withBones() puts your own placeholder in place of the built-in shape"
 })
 
 test_that("your own placeholder keeps the space of the output", {
-  # A height from the output wins, as for a built-in shape.
+  # A height from the output wins, as for a built-in shape. It is not an
+  # estimate, so it is neither measured nor remembered.
   plot <- as.character(withBones(
     fake_output("shiny-plot-output", style = "width:100%;height:320px;"),
     skeleton = bones_block("100%", "320px")
   ))
   expect_match(plot, "--bones-reserve: 320px", fixed = TRUE)
+  expect_no_match(plot, "data-bones-measure-custom", fixed = TRUE)
   expect_no_match(plot, "data-bones-remember", fixed = TRUE)
 
-  # With no height, the default of the shape of the output, and it is
-  # remembered, because it is an estimate.
+  exact <- as.character(withBones(
+    fake_output("shiny-plot-output"), skeleton = bones_block(), height = 320
+  ))
+  expect_match(exact, "--bones-reserve: 320px", fixed = TRUE)
+  expect_no_match(exact, "data-bones-measure-custom", fixed = TRUE)
+  expect_no_match(exact, "data-bones-remember", fixed = TRUE)
+
+  # With no height, the default of the type is a fallback until the browser
+  # measures the skeleton. Both are estimates, so they are remembered.
   text <- as.character(withBones(fake_output("shiny-html-output"), skeleton = bones_block()))
   expect_match(text, sprintf("--bones-reserve: %s", bones:::default_height("text")), fixed = TRUE)
   expect_match(text, 'data-bones-remember="true"', fixed = TRUE)
@@ -73,7 +82,8 @@ test_that("each animation is accepted, and gives its class", {
     html <- as.character(withBones(fake_output("shiny-plot-output"), animation = anim))
     expect_match(html, paste0("bones-anim-", anim), fixed = TRUE, info = anim)
   }
-  expect_error(withBones(fake_output("shiny-plot-output"), animation = "spin"), "should be one of")
+  expect_error(withBones(fake_output("shiny-plot-output"), animation = "spin"),
+               "`animation` must be one of", fixed = TRUE)
 
   old <- bones_defaults(animation = "cascade")
   on.exit(options(old))

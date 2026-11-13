@@ -14,11 +14,16 @@ na_to_null <- function(x) {
   if (length(x) == 0L || is.na(x[1])) NULL else x[1]
 }
 
-#' Join CSS declarations into one style attribute
+#' Join CSS declarations for one `data-bones-style` attribute
+#'
+#' bones writes no `style` attribute. A strict Content-Security-Policy
+#' (`style-src` with no `'unsafe-inline'`) blocks those, and the skeleton
+#' would then lose its sizes. bones.js reads `data-bones-style` and sets each
+#' declaration with the CSSOM, which such a policy allows.
 #'
 #' @param declarations A character vector, such as `"height: 10px;"`.
 #' @return A string, or `NULL` when there are no declarations, so that
-#'   htmltools does not write an empty `style` attribute.
+#'   htmltools does not write an empty attribute.
 #' @keywords internal
 #' @noRd
 style_attr <- function(declarations) {
@@ -43,6 +48,46 @@ check_count <- function(x, name) {
     stop(sprintf("`%s` must be a single number.", name), call. = FALSE)
   }
   invisible(x)
+}
+
+#' Stop unless `x` is exactly one of the choices
+#'
+#' @param x The value to check.
+#' @param choices The valid strings.
+#' @param name The name of the argument, for the message.
+#' @return `x`, invisibly.
+#' @keywords internal
+#' @noRd
+check_choice <- function(x, choices, name) {
+  valid <- paste(sprintf('"%s"', choices), collapse = ", ")
+  if (!is.character(x) || length(x) != 1L || is.na(x)) {
+    stop(sprintf("`%s` must be a single string, one of %s.", name, valid),
+         call. = FALSE)
+  }
+
+  # Exact matching means a new shape cannot change what an old short name means.
+  if (!x %in% choices) {
+    msg <- sprintf('`%s` must be one of %s. You gave "%s".', name, valid, x)
+    hint <- choice_hint(x, choices)
+    if (!is.null(hint)) {
+      msg <- paste(msg, sprintf('Did you mean "%s"?', hint))
+    }
+    stop(msg, call. = FALSE)
+  }
+  invisible(x)
+}
+
+# Share the same near-match rule for values and argument names.
+choice_hint <- function(x, choices) {
+  prefixes <- choices[startsWith(choices, x)]
+  if (length(prefixes) == 1L) return(prefixes)
+
+  distances <- utils::adist(x, choices, ignore.case = TRUE)
+  nearest <- which.min(distances)
+  if (length(nearest) == 1L && distances[nearest] <= 2L) {
+    return(choices[nearest])
+  }
+  NULL
 }
 
 #' Make `x` a CSS length, or stop
@@ -90,6 +135,84 @@ check_ms <- function(x, name) {
 check_flag <- function(x, name) {
   if (!is.logical(x) || length(x) != 1L || is.na(x)) {
     stop(sprintf("`%s` must be TRUE or FALSE.", name), call. = FALSE)
+  }
+  invisible(x)
+}
+
+#' Stop unless `x` is a positive number of seconds
+#' @keywords internal
+#' @noRd
+check_speed <- function(x, name = "speed") {
+  if (!is.numeric(x) || length(x) != 1L || is.na(x) || x <= 0) {
+    stop(sprintf("`%s` must be a single positive number of seconds.", name), call. = FALSE)
+  }
+  invisible(x)
+}
+
+#' Stop unless `x` is one CSS value that is safe in a declaration
+#'
+#' The value goes into a CSS declaration. A value with a ";" would end the
+#' declaration and start another one.
+#' @keywords internal
+#' @noRd
+check_css_value <- function(x, name) {
+  if (!is.character(x) || length(x) != 1L || is.na(x) ||
+        !nzchar(x) || grepl("[;{}]", x)) {
+    stop(sprintf("`%s` must be a single CSS value, with no \";\", \"{\" or \"}\".", name),
+         call. = FALSE)
+  }
+  invisible(x)
+}
+
+#' Stop unless `x` is a character vector of input ids
+#'
+#' @param x The value to check.
+#' @param name The name of the argument, for the message.
+#' @param single `TRUE` if only one id is allowed.
+#' @return `x`, invisibly.
+#' @keywords internal
+#' @noRd
+check_ids <- function(x, name, single = FALSE) {
+  ok <- is.character(x) && length(x) > 0L && !anyNA(x) && all(nzchar(trimws(x)))
+  if (single && !(ok && length(x) == 1L)) {
+    stop(sprintf("`%s` must be a single non-empty input id or NULL.", name), call. = FALSE)
+  }
+  if (!ok) {
+    stop(sprintf("`%s` must be a non-empty character vector of input ids or NULL.", name),
+         call. = FALSE)
+  }
+  invisible(x)
+}
+
+#' The built-in defaults of the options that bones_defaults() sets
+#'
+#' The one list of these values. The signature of withBones() repeats some
+#' of them so that its help page shows them; a test keeps the two the same.
+#' @keywords internal
+#' @noRd
+builtin_defaults <- function() {
+  list(animation = "wave", color = NULL, highlight = NULL, radius = NULL,
+       speed = 1.4, stale = TRUE, delay = 300, min_time = 500,
+       remember = TRUE, error = bones_error(), learn = TRUE)
+}
+
+#' The value of one bones option, or its built-in default
+#' @keywords internal
+#' @noRd
+bones_option <- function(name) {
+  getOption(paste0("bones.", name), builtin_defaults()[[name]])
+}
+
+#' Stop unless `x` is FALSE, a tag, or a tag list
+#'
+#' @param x The value to check.
+#' @return `x`, invisibly.
+#' @keywords internal
+#' @noRd
+check_error <- function(x) {
+  if (!identical(x, FALSE) &&
+        !inherits(x, c("shiny.tag", "shiny.tag.list"))) {
+    stop("`error` must be FALSE, a tag, or a tag list.", call. = FALSE)
   }
   invisible(x)
 }

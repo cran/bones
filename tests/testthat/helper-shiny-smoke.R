@@ -104,6 +104,12 @@ expect_no_shiny_errors <- function(app, allow_dom_errors = NULL) {
 #' @param ... More arguments for `shinytest2::AppDriver$new()`.
 #' @return A live `AppDriver`.
 local_app_driver <- function(app_dir, ...) {
+  # CI runs the browser tests in a job of their own. The R CMD check jobs set
+  # this variable, so a slow browser cannot fail a check of the package.
+  testthat::skip_if(
+    identical(Sys.getenv("BONES_BROWSER_TESTS"), "false"),
+    "Browser tests are off (BONES_BROWSER_TESTS=false)."
+  )
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_if_not_installed("withr")
 
@@ -130,7 +136,25 @@ local_app_driver <- function(app_dir, ...) {
     },
     envir = parent.frame()
   )
+  repair_worker_id(app)
   app
+}
+
+#' Keep an `AppDriver` usable when it could not read its worker id.
+#'
+#' `AppDriver$new()` reads the id from the browser and, if that read fails,
+#' stores `NULL`. Each later log entry then stops with "arguments imply
+#' differing number of rows: 0, 1", which has nothing to do with the app under
+#' test. `NA` is what shinytest2 itself stores for an app with no worker id.
+#'
+#' @param app A live `AppDriver`.
+#' @return The application, invisibly.
+repair_worker_id <- function(app) {
+  private <- app$.__enclos_env__$private
+  if (length(private$shiny_worker_id) == 0L) {
+    private$shiny_worker_id <- NA_character_
+  }
+  invisible(app)
 }
 
 #' Wait until each bones wrapper shows its content.

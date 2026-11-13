@@ -1,7 +1,7 @@
 Package: bones
 Type: Package
 Title: Content-Shaped Loading Placeholders for 'shiny' Outputs
-Version: 0.1.1
+Version: 0.2.0
 Authors@R: person(
     given = "Tanmay",
     family = "Chanda",
@@ -27,8 +27,8 @@ BugReports: https://github.com/tenmeh/bones/issues
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.0.0
 NeedsCompilation: no
-Packaged: 2026-10-06 17:11:59 UTC; tchan
+Packaged: 2026-11-13 12:41:19 UTC; tchan
 Author: Tanmay Chanda [aut, cre, cph]
 Maintainer: Tanmay Chanda <tanmaychanda96@gmail.com>
 Repository: CRAN
-Date/Publication: 2026-10-16 12:30:02 UTC
+Date/Publication: 2026-11-13 13:40:11 UTC
